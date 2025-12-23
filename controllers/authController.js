@@ -1,6 +1,37 @@
 const User = require('../models/User');
 const jwt = require('jsonwebtoken');
 
+const sendOTP = require('../utils/emailService');
+
+
+const enable2FA = async (req, res) => {
+    const user = await User.findById(req.user._id);
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    
+    user.twoFactorCode = code;
+    user.twoFactorExpires = Date.now() + 10 * 60 * 1000; 
+    await user.save();
+
+    await sendOTP(user.email, code);
+
+    res.json({ message: 'OTP sent to email. Verify to enable 2FA.' });
+};
+
+const verify2FA = async (req, res) => {
+    const { code } = req.body;
+    const user = await User.findById(req.user._id);
+
+    if (user.twoFactorCode === code && user.twoFactorExpires > Date.now()) {
+        user.is2FAEnabled = true;
+        user.twoFactorCode = undefined;
+        user.twoFactorExpires = undefined;
+        await user.save();
+        res.json({ message: '2FA Enabled Successfully' });
+    } else {
+        res.status(400).json({ message: 'Invalid or expired code' });
+    }
+};
+
 const generateToken = (id) => {
     return jwt.sign({ id }, process.env.JWT_SECRET, {
         expiresIn: '30d',
@@ -102,9 +133,4 @@ const updateUserProfile = async (req, res) => {
     }
 };
 
-module.exports = {
-    registerUser,
-    loginUser,
-    getUserProfile,
-    updateUserProfile,
-};
+module.exports = { registerUser, loginUser, getUserProfile, updateUserProfile, enable2FA, verify2FA };
